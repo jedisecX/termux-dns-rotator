@@ -1,0 +1,61 @@
+#!/data/data/com.termux/files/usr/bin/bash
+#
+# Termux DNS Rotator
+# Cycles public DNS servers by rewriting $PREFIX/etc/resolv.conf
+# No root required. Affects Termux processes only.
+#
+
+set -euo pipefail
+
+RESOLV="$PREFIX/etc/resolv.conf"
+LOG="$HOME/.dns-rotator.log"
+CONFIG="$HOME/.config/dns-rotator/config"
+
+# Defaults
+INTERVAL=300
+DNS_LIST=(
+  "1.1.1.1 1.0.0.1"                 # Cloudflare
+  "8.8.8.8 8.8.4.4"                 # Google
+  "9.9.9.9 149.112.112.112"         # Quad9
+  "94.140.14.14 94.140.15.15"       # AdGuard
+  "208.67.222.222 208.67.220.220"   # OpenDNS
+  "76.76.2.0 76.76.10.0"            # Control D
+  "45.90.28.0 45.90.30.0"           # NextDNS public
+)
+
+# Load user config if present
+if [[ -f "$CONFIG" ]]; then
+  # shellcheck source=/dev/null
+  source "$CONFIG"
+fi
+
+# Backup original resolv.conf once
+if [[ ! -f "${RESOLV}.bak" ]]; then
+  cp "$RESOLV" "${RESOLV}.bak" 2>/dev/null || true
+fi
+
+# Ensure log directory exists
+mkdir -p "$(dirname "$LOG")"
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') : DNS rotator started (interval=${INTERVAL}s)" >> "$LOG"
+
+i=0
+total=${#DNS_LIST[@]}
+
+while true; do
+  current="${DNS_LIST[$i]}"
+
+  {
+    echo "# Termux DNS Rotator - $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "# Active servers: $current"
+    for ns in $current; do
+      echo "nameserver $ns"
+    done
+    echo "options edns0 timeout:2 attempts:2"
+  } > "$RESOLV"
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') → $current" >> "$LOG"
+
+  i=$(( (i + 1) % total ))
+  sleep "$INTERVAL"
+done
