@@ -8,6 +8,7 @@ set -euo pipefail
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 echo -e "${GREEN}[*] Termux DNS Rotator installer${NC}"
@@ -22,6 +23,8 @@ fi
 if ! command -v sv >/dev/null 2>&1; then
   echo -e "${YELLOW}[*] Installing termux-services...${NC}"
   pkg install termux-services -y
+  echo -e "${YELLOW}[!] termux-services was just installed."
+  echo -e "    You MUST fully close Termux and reopen it before the service will work.${NC}"
 fi
 
 # Install the binary
@@ -38,7 +41,7 @@ else
   echo -e "${YELLOW}[*] Config already exists – leaving it untouched${NC}"
 fi
 
-# Create service
+# Create service directory structure
 SERVICE_DIR="$PREFIX/var/service/dns-rotator"
 echo -e "${GREEN}[*] Setting up termux-services daemon${NC}"
 mkdir -p "$SERVICE_DIR/log"
@@ -56,18 +59,35 @@ exec svlogd -tt ./main
 EOF
 chmod +x "$SERVICE_DIR/log/run"
 
-# Enable + start
-sv-enable dns-rotator 2>/dev/null || true
-sv up dns-rotator
-
-sleep 1
-STATUS=$(sv status dns-rotator 2>/dev/null || echo "unknown")
+# Try to enable + start
+if sv-enable dns-rotator 2>/dev/null && sv up dns-rotator 2>/dev/null; then
+  sleep 1
+  STATUS=$(sv status dns-rotator 2>/dev/null || echo "unknown")
+  echo
+  echo -e "${GREEN}[+] Installation complete${NC}"
+  echo -e "    Service status : $STATUS"
+else
+  echo
+  echo -e "${YELLOW}[!] Could not start the service yet.${NC}"
+  echo -e "${YELLOW}    This almost always means the termux-services daemon is not running.${NC}"
+  echo
+  echo -e "${CYAN}Do this now:${NC}"
+  echo "  1. Completely close Termux (swipe it away from recent apps)"
+  echo "  2. Open Termux again"
+  echo "  3. Run:"
+  echo
+  echo -e "     ${GREEN}sv-enable dns-rotator${NC}"
+  echo -e "     ${GREEN}sv up dns-rotator${NC}"
+  echo
+  echo -e "Then check with:  ${GREEN}sv status dns-rotator${NC}"
+  echo
+  echo -e "${YELLOW}Or use the fallback (works immediately):${NC}"
+  echo "  termux-wake-lock"
+  echo "  nohup dns-rotator > /dev/null 2>&1 &"
+fi
 
 echo
-echo -e "${GREEN}[+] Installation complete${NC}"
-echo -e "    Service status : $STATUS"
-echo
-echo "Useful commands:"
+echo "Useful commands once running:"
 echo "  sv status dns-rotator"
 echo "  sv restart dns-rotator"
 echo "  tail -f $SERVICE_DIR/log/main/current"
